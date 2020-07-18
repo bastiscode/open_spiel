@@ -100,6 +100,8 @@ set(GAME_SOURCES
   tiny_hanabi.h
   trade_comm.cc
   trade_comm.h
+  wizard.cc
+  wizard.h
   y.cc
   y.h
 )
@@ -385,6 +387,10 @@ if (${BUILD_WITH_ACPC})
           $<TARGET_OBJECTS:algorithms>)
   add_test(universal_poker_test.cc universal_poker_test)
 endif()
+
+add_executable(wizard_test wizard_test.cc ${OPEN_SPIEL_OBJECTS}
+        $<TARGET_OBJECTS:tests>)
+add_test(wizard_test wizard_test)
 
 add_executable(y_test y_test.cc ${OPEN_SPIEL_OBJECTS}
                $<TARGET_OBJECTS:tests>)

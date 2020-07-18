@@ -89,6 +89,7 @@ class PyspielTest(absltest.TestCase):
         "tiny_hanabi",
         "trade_comm",
         "turn_based_simultaneous_game",
+	    "wizard",
         "y",
     ])
 
