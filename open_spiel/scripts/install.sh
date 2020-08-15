@@ -209,7 +209,7 @@ if [[ "$OSTYPE" == "linux-gnu" ]]; then
   else
     echo "System wide packages missing. Installing them..."
     sudo apt-get update
-    sudo apt-get install -y $EXT_DEPS
+    sudo apt-get install $EXT_DEPS
   fi
 
   if [[ "$TRAVIS" ]]; then

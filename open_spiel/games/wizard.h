@@ -775,7 +775,7 @@ namespace open_spiel {
 
             std::unique_ptr<State> ResampleFromInfostate(int player_id, std::function<double()> rng) const override;
 
-            void InformationStateTensor(Player player, std::vector<double> *values) const override;
+            void InformationStateTensor(Player player, std::vector<float> *values) const override;
 
             [[nodiscard]] std::unique_ptr<State> Clone() const override;
 

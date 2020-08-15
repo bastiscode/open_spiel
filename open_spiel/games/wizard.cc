@@ -299,7 +299,7 @@ namespace open_spiel {
 //            return historyString + "\n" + historyByString;
         }
 
-        void WizardState::InformationStateTensor(Player player, std::vector<double> *values) const {
+        void WizardState::InformationStateTensor(Player player, std::vector<float> *values) const {
             auto const infoState = PlayerInformationState(this->r, player).Featurize();
             values->clear();
             values->insert(values->begin(), infoState.begin(), infoState.end());
