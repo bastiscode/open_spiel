@@ -109,9 +109,19 @@ namespace open_spiel {
                         break;
                     default:
                         throw std::invalid_argument(
-                                absl::StrFormat("Error creating card with color %d", colorString));
+                                absl::StrFormat("Error creating card with color %c", colorString));
                 }
-                this->value = std::stoi(s.substr(1, std::string::npos));
+                int cardValue = std::stoi(s.substr(1, std::string::npos));
+                if (this->color == kWhite && cardValue != kNoobValue && cardValue != kWizardValue) {
+                    throw std::invalid_argument(absl::StrFormat(
+                            "Cannot create wizard or noob with value %d", cardValue
+                    ));
+                } else if (this->color != kWhite && (cardValue < kMinCardValue || cardValue > kMaxCardValue)) {
+                    throw std::invalid_argument(absl::StrFormat(
+                            "Cannot create card with value %d and color %c", cardValue, colorString
+                    ));
+                }
+                this->value = cardValue;
             }
 
             bool operator==(const Card &other) const {
@@ -283,6 +293,11 @@ namespace open_spiel {
             }
 
             Card DealCard(int cardIndex) {
+                if (this->cardCounts[cardIndex] == 0) {
+                    throw std::invalid_argument(
+                            absl::StrFormat("Cannot deal card %s because all of its kind were already dealt",
+                                            Card(cardIndex).ToStr()));
+                }
                 this->cardCounts[cardIndex]--;
                 this->cardsInDeck--;
                 return Card(cardIndex);
@@ -369,6 +384,10 @@ namespace open_spiel {
 
             bool GuessTricks(int n) {
                 assert(this->gameState == kGuessing);
+                auto const legalActions = GetLegalActions();
+                if (std::find(legalActions.begin(), legalActions.end(), n) == legalActions.end()) {
+                    throw std::invalid_argument(absl::StrFormat("Guess %d not a legal action", n));
+                }
                 if (this->turn == this->stopTurn) {
                     this->guessedTricks[this->turn] = n;
                     this->turn = this->startPlayer;
@@ -388,9 +407,13 @@ namespace open_spiel {
                 assert(this->gameState == kTricking);
                 auto const &playersHand = this->hands[this->turn];
                 // translate action to a card
-                auto const card = Card(actionId - this->getNumGuessActions());
+                auto const card = Card(actionId - numGuessActions);
                 // find this card in the players hand
                 auto const it = std::find(playersHand.begin(), playersHand.end(), card);
+                if (it == playersHand.end()) {
+                    throw std::invalid_argument(
+                            absl::StrFormat("Card %s cannot be played by player %d", card.ToStr(), this->turn));
+                }
 //                assert(it != playersHand.end());
                 auto const idx = std::distance(playersHand.begin(), it);
                 this->hands[this->turn].erase(playersHand.begin() + idx);
