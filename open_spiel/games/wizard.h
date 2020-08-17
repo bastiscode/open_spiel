@@ -679,83 +679,15 @@ namespace open_spiel {
             }
         };
 
-        class PlayerInformationState {
-        public:
-            PlayerInformationState(const Round &r, int playerNr) {
-                this->r = r;
-                this->playerNr = playerNr;
-            }
-
-            [[nodiscard]] std::vector<double> Featurize() const {
-                std::vector<double> features;
-                auto idx = 0;
-                auto const playerHand = this->r.hands[this->playerNr];
-                auto const handFeatures = CardsToArray(playerHand);
-                features.insert(features.end(), handFeatures.begin(), handFeatures.end());
-
-                std::vector<std::vector<Card>> cardsPlayedByPlayers(this->r.GetNumPlayers());
-                for (int i = 0; i < this->r.getCardsPlayed().size(); i++) {
-                    auto const card = this->r.getCardsPlayed()[i];
-                    auto const playedBy = this->r.getPlayedBy()[i];
-                    cardsPlayedByPlayers[playedBy].emplace_back(card);
-                }
-                for (auto const &cards : cardsPlayedByPlayers) {
-                    auto const cardsPlayedFeatures = CardsToArray(cards);
-                    features.insert(features.end(), cardsPlayedFeatures.begin(), cardsPlayedFeatures.end());
-                }
-
-                auto const tableFeatures = CardsToArray(this->r.getCardsPlayedOnTable());
-                features.insert(features.end(), tableFeatures.begin(), tableFeatures.end());
-
-                auto const tricksLeft = playerHand.size();
-                std::vector<double> tricksNeeded(this->r.GetNumPlayers());
-                double sumTricksNeeded = 0;
-                for (int i = 0; i < this->r.GetNumPlayers(); i++) {
-                    auto const needed = this->r.getGuessedTricks()[i] - this->r.getTricks()[i];
-                    if (needed > 0) {
-                        sumTricksNeeded += needed;
-                    }
-                    tricksNeeded[i] = needed;
-                }
-                auto const playingStyle = sumTricksNeeded - tricksLeft - tricksNeeded[this->playerNr];
-                features.insert(features.end(), this->r.getTricks().begin(), this->r.getTricks().end());
-                features.insert(features.end(), this->r.getGuessedTricks().begin(),
-                                this->r.getGuessedTricks().end());
-                features.insert(features.end(), tricksNeeded.begin(), tricksNeeded.end());
-                features.emplace_back(tricksLeft);
-                features.emplace_back(sumTricksNeeded);
-                features.emplace_back(playingStyle);
-
-                auto const trumpFeatures = TrumpToArray((Colors) this->r.getTrump().getColor());
-                features.insert(features.end(), trumpFeatures.begin(), trumpFeatures.end());
-
-                std::vector<double> playerPositionFeatures(this->r.GetNumPlayers(), 0);
-                if (this->playerNr >= this->r.getStartPlayer()) {
-                    playerPositionFeatures[this->playerNr - this->r.getStartPlayer()] = 1;
-                } else {
-                    playerPositionFeatures[this->r.GetNumPlayers() - this->r.getStartPlayer() + this->playerNr] = 1;
-                }
-                features.insert(features.end(), playerPositionFeatures.begin(), playerPositionFeatures.end());
-
-                features.emplace_back(this->r.GetRoundNr());
-                features.emplace_back(this->r.getGameState() == kGuessing ? 0 : 1);
-
-                assert(features.size() == this->r.getInfoStateSize());
-
-                return features;
-            }
-
-        private:
-            Round r;
-            int playerNr;
-        };
-
+        class WizardObserver;
 
         class WizardState : public State {
         public:
             ~WizardState() override = default;
 
-            WizardState(std::shared_ptr<const Game> game, RewardMode rewardMode, int startPlayer, int roundNr);
+            WizardState(const std::shared_ptr<const Game>& game, RewardMode rewardMode, int startPlayer, int roundNr);
+
+            WizardState(const WizardState&) = default;
 
             [[nodiscard]] Player CurrentPlayer() const override;
 
@@ -775,7 +707,9 @@ namespace open_spiel {
 
             std::unique_ptr<State> ResampleFromInfostate(int player_id, std::function<double()> rng) const override;
 
-            void InformationStateTensor(Player player, std::vector<float> *values) const override;
+            void InformationStateTensor(Player player, absl::Span<float> values) const override;
+
+            void ObservationTensor(Player player, absl::Span<float> values) const override;
 
             [[nodiscard]] std::unique_ptr<State> Clone() const override;
 
@@ -783,6 +717,8 @@ namespace open_spiel {
             void DoApplyAction(Action action_id) override;
 
         private:
+            friend class WizardObserver;
+
             Round r;
             RewardMode reward_mode_;
             std::vector<int> history_by_;
@@ -810,14 +746,21 @@ namespace open_spiel {
 
             std::vector<int> InformationStateTensorShape() const override;
 
+            std::vector<int> ObservationTensorShape() const override;
+
             int MaxGameLength() const override;
+
+            std::shared_ptr<Observer>
+            MakeObserver(absl::optional<IIGObservationType> iig_obs_type, const GameParameters &params) const override;
+
+            std::shared_ptr<WizardObserver> infoStateObserver_;
+            std::shared_ptr<WizardObserver> defaultObserver_;
 
         private:
             int num_players_;
             RewardMode reward_mode_;
             int start_player_;
             int round_nr_;
-            int info_state_size_;
         };
 
     }  // namespace leduc_poker

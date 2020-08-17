@@ -47,4 +47,9 @@ namespace open_spiel {
     }  // namespace leduc_poker
 }  // namespace open_spiel
 
-int main(int argc, char **argv) { open_spiel::wizard::BasicWizardTests(); }
+int main(int argc, char **argv) {
+    open_spiel::wizard::BasicWizardTests();
+    open_spiel::testing::ChanceOutcomesTest(*open_spiel::LoadGame(
+            "wizard", {{"players", open_spiel::GameParameter(4)}}
+    ));
+}

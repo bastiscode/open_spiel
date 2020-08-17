@@ -20,8 +20,7 @@
 #include "open_spiel/game_parameters.h"
 #include "open_spiel/spiel_utils.h"
 
-namespace open_spiel {
-    namespace wizard {
+namespace open_spiel::wizard {
         namespace {
 
             const GameType kGameType{
@@ -34,52 +33,190 @@ namespace open_spiel {
                     GameType::RewardModel::kTerminal,
                     kMaxPlayers,
                     kMinPlayers,
-                    true,
+                    false,
                     true,
                     false,
-                    false,
+                    true,
                     {{"players", GameParameter(kDefaultPlayers)},
                      {"round", GameParameter(kFirstRound)},
                      {"start_player", GameParameter(0)},
-                     {"reward_mode", GameParameter(0)}}};
+                     {"reward_mode", GameParameter(0)}},
+                    true,
+                    false};
 
             std::shared_ptr<const Game> Factory(const GameParameters &params) {
                 return std::shared_ptr<const Game>(new WizardGame(params));
             }
 
-            REGISTER_SPIEL_GAME(kGameType, Factory);
+            REGISTER_SPIEL_GAME(kGameType, Factory)
 
         }
 
-        std::vector<int> CardsToArray(const std::vector<Card> &cards) {
-            std::vector<int> array(kNumSpecials + kNumColors * kMaxCardValue);
-            for (auto &card : cards) {
-                array[card.ToIdx()] += 1;
-            }
-            return array;
-        }
+        class WizardObserver : public Observer {
+        public:
+            explicit WizardObserver(IIGObservationType iig_obs_type) : Observer(true, true),
+                                                              iig_obs_type_(iig_obs_type) {}
 
-        std::vector<int> TrumpToArray(Colors trump) {
-            std::vector<int> array(kNumColors, 0);
-            if (trump == kWhite) {
-                return array;
-            }
-            array[trump] = 1;
-            return array;
-        }
+            void WriteTensor(const State &observedState, int player, Allocator *allocator) const override {
+                const auto &state = open_spiel::down_cast<const WizardState &>(observedState);
+                SPIEL_CHECK_GE(player, 0);
+                SPIEL_CHECK_LT(player, state.num_players_);
 
-        void ArrayToMask(std::vector<int> &array) {
-            for (int &i : array) {
-                if (i > 0) {
-                    i = 1;
-                } else {
-                    i = 0;
+                int numHandFeatures = kNumSpecials + kNumColors * kMaxCardValue;
+
+                {
+                    auto out = allocator->Get("player", {state.num_players_});
+                    out.at(player) = 1;
+                }
+
+                if (iig_obs_type_.private_info == PrivateInfoType::kSinglePlayer) {
+                    auto playerHand = state.r.hands[player];
+                    auto out = allocator->Get("private_hand", {numHandFeatures});
+                    for (const auto &card : playerHand) {
+                        out.at(card.ToIdx()) += 1;
+                    }
+                }
+
+                // when private info for all players is supported
+//                if (iig_obs_type_.private_info == PrivateInfoType::kAllPlayers) {
+//                    auto out = allocator->Get("private_hands", {state.num_players_, numHandFeatures});
+//                    for (int p = 0; p < state.num_players_; p++) {
+//                        auto playerHand = state.r.hands[p];
+//                        for (const auto & card : playerHand) {
+//                            out.at(p, card.ToIdx()) += 1;
+//                        }
+//                    }
+//                }
+
+                if (iig_obs_type_.public_info) {
+                    if (iig_obs_type_.perfect_recall) {
+                        // information state
+                        {
+                            // round
+                            auto out = allocator->Get("round", {1});
+                            out.at(0) = (float) state.r.GetRoundNr();
+                        }
+                        {
+                            // move
+                            auto out = allocator->Get("move", {1});
+                            out.at(0) = (float) state.move_number_;
+                        }
+                        {
+                            // trump
+                            auto out = allocator->Get("trump", {state.num_players_});
+                            auto trumpColor = state.r.getTrump().getColor();
+                            if (trumpColor != kWhite) {
+                                out.at(trumpColor) = 1;
+                            }
+                        }
+                        {
+                            // guessed tricks
+                            auto out = allocator->Get("guessed_tricks", {state.num_players_});
+                            auto guessedTricks = state.r.getGuessedTricks();
+                            for (int i = 0; i < state.num_players_; i++) {
+                                out.at(i) = guessedTricks[i];
+                            }
+                        }
+                        {
+                            // all played cards by each player
+                            auto out = allocator->Get("playing_history",
+                                                      {state.num_players_ * state.r.GetRoundNr(), numHandFeatures});
+                            auto playedCardsOnTable = state.r.getCardsPlayedOnTable();
+                            auto playedCards = state.r.getCardsPlayed();
+                            int idx = 0;
+                            for (auto &card : playedCards) {
+                                out.at(idx, card.ToIdx()) = 1;
+                                idx++;
+                            }
+                            for (auto &card : playedCardsOnTable) {
+                                out.at(idx, card.ToIdx()) = 1;
+                                idx++;
+                            }
+                        }
+                    } else {
+                        // observation state
+                        {
+                            // round
+                            auto out = allocator->Get("round", {1});
+                            out.at(0) = (float) state.r.GetRoundNr();
+                        }
+                        {
+                            // trump
+                            auto out = allocator->Get("trump", {state.num_players_});
+                            auto trumpColor = state.r.getTrump().getColor();
+                            if (trumpColor != kWhite) {
+                                out.at(trumpColor) = 1;
+                            }
+                        }
+                        {
+                            // guessed tricks
+                            auto out = allocator->Get("guessed_tricks", {state.num_players_});
+                            auto guessedTricks = state.r.getGuessedTricks();
+                            for (int i = 0; i < state.num_players_; i++) {
+                                out.at(i) = guessedTricks[i];
+                            }
+                        }
+                        {
+                            // tricks
+                            auto out = allocator->Get("tricks", {state.num_players_});
+                            auto tricks = state.r.getTricks();
+                            for (int i = 0; i < state.num_players_; i++) {
+                                out.at(i) = tricks[i];
+                            }
+                        }
+                        {
+                            // played cards in current trick by each player
+                            auto out = allocator->Get("played_cards_on_table", {state.num_players_, numHandFeatures});
+                            auto playedCards = state.r.getCardsPlayedOnTable();
+                            for (int i = 0; i < playedCards.size(); i++) {
+                                out.at(i, playedCards[i].ToIdx()) = 1;
+                            }
+                        }
+                    }
                 }
             }
+
+            [[nodiscard]] std::string StringFrom(const State &state, int player) const override {
+                return "";
+            }
+
+        private:
+            IIGObservationType iig_obs_type_;
+        };
+
+        std::vector<int> WizardGame::InformationStateTensorShape() const {
+            // One-hot for whose turn it is (n)
+            // Encoding of players hand (numHandFeatures)
+            // Round nr (1)
+            // Move number (1)
+            // Encoding of trump (numColors)
+            // Guessed tricks (n)
+            // Card playing history (n * r * numHandFeatures)
+            // n + numHandFeatures + 1 + 1 + numColors + n * (r+1) + n * r * numHandFeatures =
+            // 2 * n + numHandFeatures + n * r * (numHandFeatures + 1) + numColors + 2
+            int numHandFeatures = kNumSpecials + kNumColors * kMaxCardValue;
+            return {2 * num_players_ + numHandFeatures + (num_players_ * round_nr_) * (numHandFeatures + 1) +
+                    kNumColors + 2};
+        }
+
+        std::vector<int> WizardGame::ObservationTensorShape() const {
+            // One-hot for whose turn it is (n)
+            // Encoding of players hand (numHandFeatures)
+            // Round nr (1)
+            // Encoding of trump (numColors)
+            // Current tricks and guessed tricks for each player (n + n)
+            // Played card in current trick by each player (n * numHandFeatures)
+            // n + numHandFeatures + 1 + numColors + n + n + n * numHandFeatures =
+            // n * (numHandFeatures + 3) + numHandFeatures + numColors + 1
+            int numHandFeatures = kNumSpecials + kNumColors * kMaxCardValue;
+            return {num_players_ * (numHandFeatures + 3) + numHandFeatures + kNumColors + 1};
         }
 
         WizardGame::WizardGame(const GameParameters &params)
                 : Game(kGameType, params) {
+            defaultObserver_ = std::make_shared<WizardObserver>(kDefaultObsType);
+            infoStateObserver_ = std::make_shared<WizardObserver>(kInfoStateObsType);
+
             auto const numPlayers = ParameterValue<int>("players");
             auto const rewardMode = (RewardMode) ParameterValue<int>("reward_mode");
             auto const startPlayer = ParameterValue<int>("start_player");
@@ -89,11 +226,10 @@ namespace open_spiel {
             this->reward_mode_ = rewardMode;
             this->start_player_ = startPlayer;
             this->round_nr_ = roundNr;
-            this->info_state_size_ = 58 * this->num_players_ + 117;
         }
 
         int WizardGame::NumDistinctActions() const {
-            return kNumCardActions + (kDeckSize / this->NumPlayers()) + 1;;
+            return kNumCardActions + (kDeckSize / this->NumPlayers()) + 1;
         }
 
         std::unique_ptr<State> WizardGame::NewInitialState() const {
@@ -132,10 +268,6 @@ namespace open_spiel {
             return std::shared_ptr<const Game>(new WizardGame(*this));
         }
 
-        std::vector<int> WizardGame::InformationStateTensorShape() const {
-            return std::vector<int>{this->info_state_size_};
-        }
-
         int WizardGame::MaxGameLength() const {
             return this->num_players_ * this->round_nr_ + this->num_players_;
         }
@@ -144,7 +276,13 @@ namespace open_spiel {
             return kDistinctCards;
         }
 
-        WizardState::WizardState(const std::shared_ptr<const Game> game, RewardMode rewardMode, int startPlayer,
+        std::shared_ptr<Observer>
+        WizardGame::MakeObserver(absl::optional<IIGObservationType> iig_obs_type, const GameParameters &params) const {
+            if (!params.empty()) SpielFatalError("Observation params not supported");
+            return std::make_shared<WizardObserver>(iig_obs_type.value_or(kDefaultObsType));
+        }
+
+        WizardState::WizardState(const std::shared_ptr<const Game>& game, RewardMode rewardMode, int startPlayer,
                                  int roundNr) : State(game) {
             num_distinct_actions_ = game->NumDistinctActions();
             num_players_ = game->NumPlayers();
@@ -210,7 +348,7 @@ namespace open_spiel {
             if (this->r.getGameState() == kDealing) {
                 return "Dealing cards right now";
             }
-            auto const cardActionFormatter = CardActionFormatter(this->r.getNumGuessActions());
+//            auto const cardActionFormatter = CardActionFormatter(this->r.getNumGuessActions());
             auto const cardStringFormatter = CardStringFormatter();
             auto const isGuessing = this->r.getGameState() == kGuessing;
             auto const trump = this->r.getTrump();
@@ -299,18 +437,12 @@ namespace open_spiel {
 //            return historyString + "\n" + historyByString;
         }
 
-        void WizardState::InformationStateTensor(Player player, std::vector<float> *values) const {
-            auto const infoState = PlayerInformationState(this->r, player).Featurize();
-            values->clear();
-            values->insert(values->begin(), infoState.begin(), infoState.end());
-        }
-
         void WizardState::DoApplyAction(Action action_id) {
             history_by_.emplace_back(CurrentPlayer());
             if (this->r.getGameState() == kDealing) {
-                auto const finishedDealing = this->r.DealCard(action_id);
+                this->r.DealCard(action_id);
             } else if (this->r.getGameState() == kGuessing) {
-                auto const finishedGuessing = this->r.GuessTricks(action_id);
+                this->r.GuessTricks(action_id);
             } else {
                 // action is a card play action, resolve correct card to play in PlayCard
                 auto const finishedOneTrick = this->r.PlayCard(action_id);
@@ -381,7 +513,7 @@ namespace open_spiel {
                     cardsPlayedBy[currentDealTo].pop_back();
                 } else {
                     // deal random card from card pool (cards in deck + unseen cards)
-                    int idx = 0;
+                    int idx;
                     bool validCardIdx = false;
                     while (!validCardIdx) {
                         std::discrete_distribution<int> distribution(cardPool.begin(), cardPool.end());
@@ -449,6 +581,15 @@ namespace open_spiel {
             return outcomes;
         }
 
-    }
+        void WizardState::InformationStateTensor(Player player, absl::Span<float> values) const {
+            ContiguousAllocator allocator(values);
+            const auto &game = open_spiel::down_cast<const WizardGame &>(*game_);
+            game.infoStateObserver_->WriteTensor(*this, player, &allocator);
+        }
 
-}
+        void WizardState::ObservationTensor(Player player, absl::Span<float> values) const {
+            ContiguousAllocator allocator(values);
+            const auto &game = open_spiel::down_cast<const WizardGame &>(*game_);
+            game.defaultObserver_->WriteTensor(*this, player, &allocator);
+        }
+    }
