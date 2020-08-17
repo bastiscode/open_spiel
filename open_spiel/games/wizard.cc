@@ -390,11 +390,11 @@ namespace open_spiel::wizard {
     }
 
     std::string WizardState::ToString() const {
-        std::string string;
+        std::string string = "";
         for (auto i : history_) {
-            if (!string.empty()) absl::StrAppend(&string, ",");
-            absl::StrAppend(&string, absl::StrFormat("(%d, %d)", i.player, i.action));
+            absl::StrAppend(&string, absl::StrFormat("(%d, %d),", i.player, i.action));
         }
+        return string;
     }
 
     bool WizardState::IsTerminal() const {
