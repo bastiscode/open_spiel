@@ -33,9 +33,9 @@ namespace open_spiel::wizard {
                 GameType::RewardModel::kTerminal,
                 kMaxPlayers,
                 kMinPlayers,
-                false,
                 true,
-                false,
+                true,
+                true,
                 true,
                 {{"players", GameParameter(kDefaultPlayers)},
                  {"round", GameParameter(kFirstRound)},
@@ -78,7 +78,7 @@ namespace open_spiel::wizard {
             }
 
             // when private info for all players is supported
-//                if (iig_obs_type_.private_info == PrivateInfoType::kAllPlayers) {
+//                else if (iig_obs_type_.private_info == PrivateInfoType::kAllPlayers) {
 //                    auto out = allocator->Get("private_hands", {state.num_players_, numHandFeatures});
 //                    for (int p = 0; p < state.num_players_; p++) {
 //                        auto playerHand = state.r.hands[p];
@@ -176,8 +176,65 @@ namespace open_spiel::wizard {
             }
         }
 
-        [[nodiscard]] std::string StringFrom(const State &state, int player) const override {
-            return "";
+        [[nodiscard]] std::string StringFrom(const State &observedState, int player) const override {
+            const auto &state = open_spiel::down_cast<const WizardState &>(observedState);
+            SPIEL_CHECK_GE(player, 0);
+            SPIEL_CHECK_LT(player, state.num_players_);
+            if (state.r.getGameState() == kDealing) {
+                return "dealing cards";
+            }
+
+            auto const cardStringFormatter = CardStringFormatter();
+            auto const isGuessing = state.r.getGameState() == kGuessing;
+            auto const trump = state.r.getTrump();
+            auto const legalActions = state.r.GetLegalActions(player);
+            auto const cardsPlayed = state.r.getCardsPlayed();
+            auto const playedBy = state.r.getPlayedBy();
+            auto const playedByOnTable = state.r.getPlayedByOnTable();
+            auto const cardsPlayedOnTable = state.r.getCardsPlayedOnTable();
+            auto const playerHand = state.r.hands[player];
+            auto const guessedTricks = state.r.getGuessedTricks();
+            auto const tricks = state.r.getTricks();
+            auto string = absl::StrCat(
+                    absl::StrFormat("playerNr\t%d\n", player),
+                    absl::StrFormat("currentPlayer\t%d\n", state.r.getTurn()),
+                    absl::StrFormat("round\t%d\n", state.r.getRoundNr()),
+                    absl::StrFormat("numPlayers\t%d\n", state.num_players_),
+                    absl::StrFormat("guessedTricks\t%s\n", absl::StrJoin(guessedTricks, ",")),
+                    absl::StrFormat("tricks\t%s\n", absl::StrJoin(tricks, ",")),
+                    absl::StrFormat("gamePhase\t%s\n", isGuessing ? "guessing"
+                                                                  : "tricking"),
+                    absl::StrFormat("cardsPlayedOnTable\t%s\n", absl::StrJoin(cardsPlayedOnTable.begin(),
+                                                                              cardsPlayedOnTable.end(),
+                                                                              ",",
+                                                                              cardStringFormatter)),
+                    absl::StrFormat("playedByOnTable\t%s\n", absl::StrJoin(playedByOnTable.begin(),
+                                                                           playedByOnTable.end(),
+                                                                           ",")),
+                    absl::StrFormat("hand\t%s\n", absl::StrJoin(playerHand.begin(),
+                                                                playerHand.end(),
+                                                                ",",
+                                                                cardStringFormatter)),
+                    absl::StrFormat("trump\t%s\n", trump.ToStr()),
+                    absl::StrFormat("legalActions\t%s\n", absl::StrJoin(legalActions.begin(),
+                                                                        legalActions.end(),
+                                                                        ","))
+            );
+            if (iig_obs_type_.public_info) {
+                if (iig_obs_type_.perfect_recall) {
+                    // information state
+                    // extend observed information by history of all cards played
+                    absl::StrAppend(&string,
+                                    absl::StrFormat("cardsPlayed\t%s\n", absl::StrJoin(cardsPlayed.begin(),
+                                                                                       cardsPlayed.end(),
+                                                                                       ",",
+                                                                                       cardStringFormatter)),
+                                    absl::StrFormat("playedBy\t%s\n", absl::StrJoin(playedBy.begin(),
+                                                                                    playedBy.end(),
+                                                                                    ",")));
+                }
+            }
+            return string;
         }
 
     private:
@@ -333,7 +390,11 @@ namespace open_spiel::wizard {
     }
 
     std::string WizardState::ToString() const {
-        return "wizard";
+        std::string string;
+        for (auto i : history_) {
+            if (!string.empty()) absl::StrAppend(&string, ",");
+            absl::StrAppend(&string, absl::StrFormat("(%d, %d)", i.player, i.action));
+        }
     }
 
     bool WizardState::IsTerminal() const {
@@ -342,99 +403,6 @@ namespace open_spiel::wizard {
 
     std::vector<double> WizardState::Returns() const {
         return this->r.GetRewards(this->reward_mode_);
-    }
-
-    std::string WizardState::InformationStateString(Player player) const {
-        if (this->r.getGameState() == kDealing) {
-            return "Dealing cards right now";
-        }
-//            auto const cardActionFormatter = CardActionFormatter(this->r.getNumGuessActions());
-        auto const cardStringFormatter = CardStringFormatter();
-        auto const isGuessing = this->r.getGameState() == kGuessing;
-        auto const trump = this->r.getTrump();
-        auto const legalActions = this->r.GetLegalActions(player);
-        auto const cardsPlayed = this->r.getCardsPlayed();
-        auto const playedBy = this->r.getPlayedBy();
-        auto const playedByOnTable = this->r.getPlayedByOnTable();
-        auto const cardsPlayedOnTable = this->r.getCardsPlayedOnTable();
-        auto const playerHand = this->r.hands[player];
-        auto const guessedTricks = this->r.getGuessedTricks();
-        auto const tricks = this->r.getTricks();
-//            std::vector<Card> unknownCards; // cards that are still in deck or in the hands of the other players
-//            auto cardCounts = this->r.getDeck().getCardCounts();
-//            for (int c = 0; c < cardCounts.size(); c++) {
-//                for (int i = 0; i < cardCounts[c]; i++) {
-//                    unknownCards.emplace_back(Card(c));
-//                }
-//            }
-//            for (int i = 0; i < this->num_players_; i++) {
-//                if (i == player) continue;
-//                auto const hand = this->r.hands[i];
-//                for (auto const &card : hand) {
-//                    unknownCards.emplace_back(card);
-//                }
-//            }
-//            std::sort(unknownCards.begin(), unknownCards.end());
-        auto string = absl::StrCat(
-                absl::StrFormat("playerNr\t%d\n", player),
-                absl::StrFormat("currentPlayer\t%d\n", this->r.getTurn()),
-                absl::StrFormat("round\t%d\n", this->r.getRoundNr()),
-                absl::StrFormat("numPlayers\t%d\n", num_players_),
-                absl::StrFormat("startPlayer\t%d\n", this->r.getStartPlayer()),
-                absl::StrFormat("guessedTricks\t%s\n", absl::StrJoin(guessedTricks, ",")),
-                absl::StrFormat("tricks\t%s\n", absl::StrJoin(tricks, ",")),
-                absl::StrFormat("gamePhase\t%s\n", isGuessing ? "guessing"
-                                                              : "tricking"),
-                absl::StrFormat("cardsPlayed\t%s\n", absl::StrJoin(cardsPlayed.begin(),
-                                                                   cardsPlayed.end(),
-                                                                   ",",
-                                                                   cardStringFormatter)),
-                absl::StrFormat("playedBy\t%s\n", absl::StrJoin(playedBy.begin(),
-                                                                playedBy.end(),
-                                                                ",")),
-                absl::StrFormat("cardsPlayedOnTable\t%s\n", absl::StrJoin(cardsPlayedOnTable.begin(),
-                                                                          cardsPlayedOnTable.end(),
-                                                                          ",",
-                                                                          cardStringFormatter)),
-                absl::StrFormat("playedByOnTable\t%s\n", absl::StrJoin(playedByOnTable.begin(),
-                                                                       playedByOnTable.end(),
-                                                                       ",")),
-                absl::StrFormat("hand\t%s\n", absl::StrJoin(playerHand.begin(),
-                                                            playerHand.end(),
-                                                            ",",
-                                                            cardStringFormatter)),
-                absl::StrFormat("trump\t%s\n", trump.ToStr()),
-//                    absl::StrFormat("unknownCards\t%s\n", absl::StrJoin(unknownCards.begin(),
-//                                                                        unknownCards.end(),
-//                                                                        ",",
-//                                                                        cardStringFormatter)),
-                absl::StrFormat("legalActions\t%s\n", absl::StrJoin(legalActions.begin(),
-                                                                    legalActions.end(),
-                                                                    ","))
-        );
-        return string;
-
-//            std::string historyString;
-//            std::string historyByString;
-//            int currentDealTo = this->r.getStartPlayer();
-//            for (int i = 0; i < history_.size(); i++) {
-//                if (i > 0) {
-//                    historyString += ",";
-//                    historyByString += ",";
-//                }
-//                auto const playedBy = history_by_[i];
-//                if (playedBy == player || (i < num_players_ * this->r.getRoundNr() && currentDealTo == player)) {
-//                    historyString += std::to_string(history_[i]);
-//                } else {
-//                    historyString += "-3";
-//                }
-//                historyByString += std::to_string(history_by_[i]);
-//                currentDealTo++;
-//                if (currentDealTo >= num_players_) {
-//                    currentDealTo = 0;
-//                }
-//            }
-//            return historyString + "\n" + historyByString;
     }
 
     void WizardState::DoApplyAction(Action action_id) {
@@ -591,5 +559,15 @@ namespace open_spiel::wizard {
         ContiguousAllocator allocator(values);
         const auto &game = open_spiel::down_cast<const WizardGame &>(*game_);
         game.defaultObserver_->WriteTensor(*this, player, &allocator);
+    }
+
+    std::string WizardState::InformationStateString(Player player) const {
+        const auto &game = open_spiel::down_cast<const WizardGame &>(*game_);
+        return game.infoStateObserver_->StringFrom(*this, player);
+    }
+
+    std::string WizardState::ObservationString(Player player) const {
+        const auto &game = open_spiel::down_cast<const WizardGame &>(*game_);
+        return game.defaultObserver_->StringFrom(*this, player);
     }
 }

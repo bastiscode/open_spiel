@@ -687,6 +687,8 @@ namespace open_spiel::wizard {
 
         void ObservationTensor(Player player, absl::Span<float> values) const override;
 
+        std::string ObservationString(Player player) const override;
+
         [[nodiscard]] std::unique_ptr<State> Clone() const override;
 
     protected:
