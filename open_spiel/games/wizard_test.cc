@@ -16,35 +16,33 @@
 #include "open_spiel/tests/basic_tests.h"
 #include "wizard.h"
 
-namespace open_spiel {
-    namespace wizard {
-        namespace {
+namespace open_spiel::wizard {
+    namespace {
 
-            namespace testing = open_spiel::testing;
+        namespace testing = open_spiel::testing;
 
-            void BasicWizardTests() {
-                testing::LoadGameTest("wizard");
-                testing::ChanceOutcomesTest(*LoadGame("wizard"));
-                for (Player players = 3; players <= 6; players++) {
-                    for (int round = 1; round <= wizard::kDeckSize / players; round++) {
-                        testing::RandomSimTest(
-                                *LoadGame("wizard", {{"players",      GameParameter(players)},
-                                                     {"round",        GameParameter(round)},
-                                                     {"start_player", GameParameter(0)},
-                                                     {"reward_mode",  GameParameter(0)}}
-                                ), 10);
-                        testing::ResampleInfostateTest(
-                                *LoadGame("wizard", {{"players",      GameParameter(players)},
-                                                     {"round",        GameParameter(round)},
-                                                     {"start_player", GameParameter(0)},
-                                                     {"reward_mode",  GameParameter(0)}}
-                                ), 10);
-                    }
+        void BasicWizardTests() {
+            testing::LoadGameTest("wizard");
+            testing::ChanceOutcomesTest(*LoadGame("wizard"));
+            for (Player players = 3; players <= 6; players++) {
+                for (int round = 1; round <= wizard::kDeckSize / players; round++) {
+                    testing::RandomSimTest(
+                            *LoadGame("wizard", {{"players",      GameParameter(players)},
+                                                 {"round",        GameParameter(round)},
+                                                 {"start_player", GameParameter(0)},
+                                                 {"reward_mode",  GameParameter(0)}}
+                            ), 10);
+                    testing::ResampleInfostateTest(
+                            *LoadGame("wizard", {{"players",      GameParameter(players)},
+                                                 {"round",        GameParameter(round)},
+                                                 {"start_player", GameParameter(0)},
+                                                 {"reward_mode",  GameParameter(0)}}
+                            ), 10);
                 }
             }
+        }
 
-        }  // namespace
-    }  // namespace leduc_poker
+    }  // namespace
 }  // namespace open_spiel
 
 int main(int argc, char **argv) {
