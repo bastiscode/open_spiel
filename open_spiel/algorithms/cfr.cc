@@ -176,7 +176,7 @@ TabularPolicy CFRCurrentPolicy::AsTabular() const {
 CFRSolverBase::CFRSolverBase(const Game& game, bool alternating_updates,
                              bool linear_averaging, bool regret_matching_plus,
                              bool random_initial_regrets, int seed)
-    : game_(game.Clone()),
+    : game_(game.shared_from_this()),
       root_state_(game.NewInitialState()),
       root_reach_probs_(game_->NumPlayers() + 1, 1.0),
       regret_matching_plus_(regret_matching_plus),
@@ -280,7 +280,7 @@ std::string CFRSolverBase::Serialize(int double_precision,
   absl::StrAppend(&str, "\n");
   // Game section
   absl::StrAppend(&str, kSerializeGameSectionHeader, "\n");
-  absl::StrAppend(&str, game_->ToString(), "\n");
+  absl::StrAppend(&str, game_->Serialize(), "\n");
   // Internal solver state section
   absl::StrAppend(&str, kSerializeSolverTypeSectionHeader, "\n");
   absl::StrAppend(&str, SerializeThisType(), "\n");
@@ -756,7 +756,7 @@ PartiallyDeserializedCFRSolver PartiallyDeserializeCFRSolver(
       absl::StrSplit(
           serialized,
           absl::StrCat(kSerializeSolverValuesTableSectionHeader, "\n"));
-  return PartiallyDeserializedCFRSolver(LoadGame(section_strings[kGame]),
+  return PartiallyDeserializedCFRSolver(DeserializeGame(section_strings[kGame]),
                                         section_strings[kSolverType],
                                         section_strings[kSolverSpecificState],
                                         other_and_values_table_data.second);

@@ -23,6 +23,7 @@
 #include "open_spiel/game_parameters.h"
 #include "open_spiel/games/efg_game.h"
 #include "open_spiel/games/efg_game_data.h"
+#include "open_spiel/games/nfg_game.h"
 #include "open_spiel/matrix_game.h"
 #include "open_spiel/normal_form_game.h"
 #include "open_spiel/observer.h"
@@ -44,8 +45,14 @@
 #include "pybind11/include/pybind11/stl.h"
 
 // List of optional python submodules.
+#if BUILD_WITH_GAMUT
+#include "open_spiel/games/gamut/gamut_pybind11.h"
+#endif
 #if BUILD_WITH_PUBLIC_STATES
 #include "open_spiel/public_states/pybind11/public_states.h"
+#endif
+#if BUILD_WITH_XINXIN
+#include "open_spiel/games/hearts/xinxin_pybind11.h"
 #endif
 
 // This file contains OpenSpiel's Python API. The best place to see an overview
@@ -96,9 +103,9 @@ PYBIND11_MODULE(pyspiel, m) {
       .def("is_mandatory", &GameParameter::is_mandatory)
       .def("__str__", &GameParameter::ToString)
       .def("__repr__", &GameParameter::ToReprString)
-      .def("__eq__", [](const GameParameter &value, GameParameter *value2) {
-         return value2 && value.ToReprString() == value2->ToReprString();
-       });
+      .def("__eq__", [](const GameParameter& value, GameParameter* value2) {
+        return value2 && value.ToReprString() == value2->ToReprString();
+      });
 
   py::enum_<PrivateInfoType>(m, "PrivateInfoType")
       .value("ALL_PLAYERS", PrivateInfoType::kAllPlayers)
@@ -338,13 +345,13 @@ PYBIND11_MODULE(pyspiel, m) {
            })
       .def(py::pickle(                            // Pickle support
           [](std::shared_ptr<const Game> game) {  // __getstate__
-            return game->ToString();
+            return game->Serialize();
           },
           [](const std::string& data) {  // __setstate__
             // Have to remove the const here for this to compile, presumably
             // because the holder type is non-const. But seems like you can't
             // set the holder type to std::shared_ptr<const Game> either.
-            return std::const_pointer_cast<Game>(LoadGame(data));
+            return std::const_pointer_cast<Game>(DeserializeGame(data));
           }));
 
   py::class_<NormalFormGame, std::shared_ptr<NormalFormGame>> normal_form_game(
@@ -438,6 +445,9 @@ PYBIND11_MODULE(pyspiel, m) {
 
   m.def("hulh_game_string", &open_spiel::HulhGameString);
   m.def("hunl_game_string", &open_spiel::HunlGameString);
+  m.def("turn_based_goofspiel_game_string",
+        &open_spiel::TurnBasedGoofspielGameString);
+
   m.def("create_matrix_game",
         py::overload_cast<const std::string&, const std::string&,
                           const std::vector<std::string>&,
@@ -513,11 +523,14 @@ PYBIND11_MODULE(pyspiel, m) {
         "Loads a game as a tensor game (will fail if not a tensor game.");
 
   m.def("load_efg_game", open_spiel::efg_game::LoadEFGGame,
-        "Load a gambit extensive form game from data.");
+        "Load a gambit extensive form game (.efg) from string data.");
   m.def("get_sample_efg_data", open_spiel::efg_game::GetSampleEFGData,
         "Get Kuhn poker EFG data.");
   m.def("get_kuhn_poker_efg_data", open_spiel::efg_game::GetKuhnPokerEFGData,
         "Get sample EFG data.");
+
+  m.def("load_nfg_game", open_spiel::nfg_game::LoadNFGGame,
+        "Load a gambit normal form game (.nfg) from string data.");
 
   m.def("extensive_to_matrix_game",
         open_spiel::algorithms::ExtensiveToMatrixGame,
@@ -544,7 +557,7 @@ PYBIND11_MODULE(pyspiel, m) {
       [](const std::string& string) { throw SpielException(string); });
 
   // Register other bits of the API.
-  init_pyspiel_bots(m);             // Bots and bot-related algorithms.
+  init_pyspiel_bots(m);                   // Bots and bot-related algorithms.
   init_pyspiel_observation_histories(m);  // Histories related to observations.
   init_pyspiel_policy(m);           // Policies and policy-related algorithms.
   init_pyspiel_game_transforms(m);  // Game transformations.
@@ -554,8 +567,14 @@ PYBIND11_MODULE(pyspiel, m) {
   init_pyspiel_observer(m);      // Observers and observations.
 
   // List of optional python submodules.
+#if BUILD_WITH_GAMUT
+  init_pyspiel_gamut(m);
+#endif
 #if BUILD_WITH_PUBLIC_STATES
   init_pyspiel_public_states(m);
+#endif
+#if BUILD_WITH_XINXIN
+  init_pyspiel_xinxin(m);
 #endif
 }
 

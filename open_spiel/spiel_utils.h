@@ -166,6 +166,9 @@ int PreviousPlayerRoundRobin(Player player, int nplayers);
 // found.
 absl::optional<std::string> FindFile(const std::string& filename, int levels);
 
+// Normalizes the span.
+void Normalize(absl::Span<double> weights);
+
 // Returns whether the absolute difference between floating point values a and
 // b is less than or equal to FloatingPointThresholdRatio() * max(|a|, |b|).
 template <typename T>
@@ -182,6 +185,20 @@ bool Near(T a, T b, T epsilon) {
   static_assert(std::is_floating_point<T>::value,
                 "Near() is only for floating point args.");
   return fabs(a - b) <= epsilon;
+}
+
+template <typename T>
+bool AllNear(const std::vector<T>& vector1, const std::vector<T>& vector2,
+             T epsilon) {
+  if (vector1.size() != vector2.size()) {
+    return false;
+  }
+  for (int i = 0; i < vector1.size(); ++i) {
+    if (!Near(vector1[i], vector2[i], epsilon)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // Macros to check for error conditions.

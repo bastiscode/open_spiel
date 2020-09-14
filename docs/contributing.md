@@ -142,12 +142,10 @@ release!). Contributions are certainly not limited to these suggestions!
 -   **General Games Wrapper**. There are several general game engine languages
     and databases of general games that currently exist, for example within the
     [general game-playing project](http://www.ggp.org/) and the
-    [Ludii General Game System](http://www.ludii.games/index.html) or
-    [GAMUT](http://gamut.stanford.edu/) (a suite of normal-form game
-    generators). A very nice addition to OpenSpiel would be a game that
-    interprets games represented in these languages and presents them as
-    OpenSpiel games. This could lead to the potential of evaluating learning
-    agents on hundreds to thousands of games.
+    [Ludii General Game System](http://www.ludii.games/index.html). A very nice
+    addition to OpenSpiel would be a game that interprets games represented in
+    these languages and presents them as OpenSpiel games. This could lead to the
+    potential of evaluating learning agents on hundreds to thousands of games.
 
 -   **Go API**. We currently have a prototype [Go](https://golang.org/) API
     similar to the Python API. It is exposed using cgo via a C API much like the
@@ -239,3 +237,7 @@ release!). Contributions are certainly not limited to these suggestions!
     for running a batch of episodes using Tensorflow directly from C++ (in
     `contrib/`). It has not yet been tested with CMake and public Tensorflow. We
     would like to officially support this and move it into the core library.
+
+-   **Visualizations of games**. There exists an interactive viewer for
+    OpenSpiel games called [SpielViz](https://github.com/michalsustr/spielviz).
+    Contributions to this project are welcome.

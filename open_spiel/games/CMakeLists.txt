@@ -74,6 +74,8 @@ set(GAME_SOURCES
   matrix_games.cc
   negotiation.cc
   negotiation.h
+  nfg_game.cc
+  nfg_game.h
   oshi_zumo.cc
   oshi_zumo.h
   othello.cc
@@ -92,8 +94,8 @@ set(GAME_SOURCES
   quoridor.h
   skat.cc
   skat.h
-  stones_and_gems.cc
-  stones_and_gems.h
+  solitaire.cc
+  solitaire.h
   tic_tac_toe.cc
   tic_tac_toe.h
   tiny_bridge.cc
@@ -128,6 +130,10 @@ endif()
 if (${BUILD_WITH_XINXIN})
   add_subdirectory(hearts)
 endif()
+if (${BUILD_WITH_GAMUT})
+  add_subdirectory(gamut)
+endif()
+
 
 # Uncomment to build the Ludii demo
 # add_subdirectory (ludii)
@@ -327,6 +333,11 @@ add_executable(negotiation_test negotiation_test.cc ${OPEN_SPIEL_OBJECTS}
                $<TARGET_OBJECTS:algorithms>)
 add_test(negotiation_test negotiation_test)
 
+add_executable(nfg_game_test nfg_game_test.cc ${OPEN_SPIEL_OBJECTS}
+               $<TARGET_OBJECTS:tests>
+               $<TARGET_OBJECTS:algorithms>)
+add_test(nfg_game_test nfg_game_test)
+
 add_executable(oshi_zumo_test oshi_zumo_test.cc ${OPEN_SPIEL_OBJECTS}
                $<TARGET_OBJECTS:tests>
                $<TARGET_OBJECTS:algorithms>)
@@ -361,9 +372,9 @@ add_executable(skat_test skat_test.cc ${OPEN_SPIEL_OBJECTS}
                $<TARGET_OBJECTS:tests>)
 add_test(skat_test skat_test)
 
-add_executable(stones_and_gems_test stones_and_gems_test.cc ${OPEN_SPIEL_OBJECTS}
+add_executable(solitaire_test solitaire_test.cc ${OPEN_SPIEL_OBJECTS}
                $<TARGET_OBJECTS:tests>)
-add_test(stones_and_gems_test stones_and_gems_test)
+add_test(solitaire_test solitaire_test)
 
 add_executable(tic_tac_toe_test tic_tac_toe_test.cc ${OPEN_SPIEL_OBJECTS}
                $<TARGET_OBJECTS:tests>)

@@ -31,15 +31,6 @@
 namespace open_spiel::algorithms {
 namespace {
 
-std::vector<double> Normalize(const std::vector<double>& weights) {
-  std::vector<double> probs(weights);
-  const double normalizer = absl::c_accumulate(weights, 0.);
-  absl::c_for_each(probs, [&probs, normalizer](double& w) {
-    w = (normalizer == 0.0 ? 1.0 / probs.size() : w / normalizer);
-  });
-  return probs;
-}
-
 void AdvanceBeliefHistoryOneAction(HistoryDistribution* previous, Action action,
                                    Player player_id,
                                    const Policy* opponent_policy) {
@@ -50,11 +41,12 @@ void AdvanceBeliefHistoryOneAction(HistoryDistribution* previous, Action action,
     switch (parent->GetType()) {
       case StateType::kChance: {
         open_spiel::ActionsAndProbs outcomes = parent->ChanceOutcomes();
-        double action_prob = GetProb(outcomes, action);
+        // If we can't find the action in the policy, then set it to 0.
+        const double action_prob = GetProb(outcomes, action);
 
         // If we don't find the chance outcome, then the state we're in is
         // impossible, so we set it to zero.
-        if (action_prob == -1) {
+        if (action_prob < 0) {
           prob = 0;
           continue;
         }
@@ -66,7 +58,12 @@ void AdvanceBeliefHistoryOneAction(HistoryDistribution* previous, Action action,
         if (parent->CurrentPlayer() == player_id) break;
         open_spiel::ActionsAndProbs policy =
             opponent_policy->GetStatePolicy(*parent);
-        double action_prob = GetProb(policy, action);
+        // If we can't find the action in the policy, then set it to 0.
+        const double action_prob = GetProb(policy, action);
+        if (action_prob < 0) {
+          prob = 0;
+          continue;
+        }
         SPIEL_CHECK_PROB(action_prob);
         prob *= action_prob;
         break;
@@ -79,7 +76,7 @@ void AdvanceBeliefHistoryOneAction(HistoryDistribution* previous, Action action,
     if (prob == 0) continue;
     parent->ApplyAction(action);
   }
-  previous->second = Normalize(previous->second);
+  Normalize(absl::MakeSpan(previous->second));
 }
 
 int GetBeliefHistorySize(HistoryDistribution* beliefs) {
@@ -173,6 +170,7 @@ HistoryDistribution GetStateDistribution(const State& state,
         // At opponent nodes, similar to chance nodes but get the probability
         // from the policy instead.
         std::string opp_infostate_str = states[idx]->InformationStateString();
+        SPIEL_CHECK_TRUE(opponent_policy != nullptr);
         ActionsAndProbs state_policy =
             opponent_policy->GetStatePolicy(*states[idx]);
         for (Action action : states[idx]->LegalActions()) {
@@ -217,8 +215,8 @@ HistoryDistribution GetStateDistribution(const State& state,
   }
 
   // Now normalize the probs
-
-  return {std::move(final_states), Normalize(final_probs)};
+  Normalize(absl::MakeSpan(final_probs));
+  return {std::move(final_states), std::move(final_probs)};
 }
 
 std::unique_ptr<HistoryDistribution> UpdateIncrementalStateDistribution(

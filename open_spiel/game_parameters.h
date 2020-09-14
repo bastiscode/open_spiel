@@ -24,10 +24,11 @@
 
 namespace open_spiel {
 
-// A GameParameter can be used in 2 contexts:
+// A GameParameter can be used in 3 contexts:
 // - when defining the parameters for a game, with their optional default value
 //   and whether they are mandatory or not.
 // - when specifying in Python a parameter value.
+// - when passing a parametrization of additional Observer fields.
 //
 class GameParameter;
 
@@ -109,6 +110,56 @@ class GameParameter {
     SPIEL_CHECK_TRUE(type_ == Type::kGame);
     return game_value_;
   }
+
+  // Access values via param.value<T>().
+  template <typename T>
+  T value() const;
+  template <>
+  int value() const {
+    return int_value();
+  }
+  template <>
+  double value() const {
+    return double_value();
+  }
+  template <>
+  const std::string& value() const {
+    return string_value();
+  }
+  template <>
+  std::string value() const {
+    return string_value();
+  }
+  template <>
+  bool value() const {
+    return bool_value();
+  }
+  template <>
+  const std::map<std::string, GameParameter>& value() const {
+    return game_value();
+  }
+  template <>
+  std::map<std::string, GameParameter> value() const {
+    return game_value();
+  }
+
+  bool operator==(const GameParameter& rhs) const {
+    switch (type_) {
+      case Type::kInt:
+        return rhs.has_int_value() && int_value_ == rhs.int_value();
+      case Type::kDouble:
+        return rhs.has_double_value() && double_value_ == rhs.double_value();
+      case Type::kString:
+        return rhs.has_string_value() && string_value_ == rhs.string_value();
+      case Type::kBool:
+        return rhs.has_bool_value() && bool_value_ == rhs.bool_value();
+      case Type::kGame:
+        return rhs.has_game_value() && game_value_ == rhs.game_value();
+      case Type::kUnset:
+        return rhs.type_ == Type::kUnset;
+    }
+  }
+  bool operator!=(const GameParameter& rhs) const { return !(*this == rhs); }
 
  private:
   bool is_mandatory_;

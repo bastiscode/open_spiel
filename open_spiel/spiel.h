@@ -29,6 +29,7 @@
 
 #include "open_spiel/abseil-cpp/absl/random/bit_gen_ref.h"
 #include "open_spiel/abseil-cpp/absl/strings/str_join.h"
+#include "open_spiel/abseil-cpp/absl/synchronization/mutex.h"
 #include "open_spiel/abseil-cpp/absl/types/optional.h"
 #include "open_spiel/abseil-cpp/absl/types/span.h"
 #include "open_spiel/fog/fog_constants.h"
@@ -147,6 +148,11 @@ std::ostream& operator<<(std::ostream& stream, GameType::RewardModel value);
 // The probability of taking each possible action in a particular info state.
 using ActionsAndProbs = std::vector<std::pair<Action, double>>;
 
+// We alias this here as we can't import state_distribution.h or we'd have a
+// circular dependency.
+using HistoryDistribution =
+    std::pair<std::vector<std::unique_ptr<State>>, std::vector<double>>;
+
 // Forward declarations.
 class Game;
 class Observer;
@@ -245,9 +251,19 @@ class State {
     return StringToAction(CurrentPlayer(), action_str);
   }
 
-  // Returns a string representation of the state. This has no particular
-  // semantics and is targeting debugging code.
+  // Returns a string representation of the state. Also used as in the default
+  // implementation of operator==.
   virtual std::string ToString() const = 0;
+
+  // Returns true if these states are equal, false otherwise. Two states are
+  // equal if they are the same world state; the interpretation might differ
+  // across games. For instance, in an imperfect information game, the full
+  // history might be relevant for distinguishing states whereas it might not be
+  // relevant for single-player games or perfect information games such as
+  // Tic-Tac-Toe, where only the current board state is necessary.
+  virtual bool operator==(const State& other) const {
+    return ToString() == other.ToString();
+  }
 
   // Is this a terminal state? (i.e. has the game ended?)
   virtual bool IsTerminal() const = 0;
@@ -312,6 +328,13 @@ class State {
     return CurrentPlayer() == kSimultaneousPlayerId;
   }
 
+  // Is the specified player acting at this state?
+  bool IsPlayerActing(Player player) const {
+    SPIEL_CHECK_GE(player, 0);
+    SPIEL_CHECK_LT(player, NumPlayers());
+    return CurrentPlayer() == player || IsSimultaneousNode();
+  }
+
   // We store (player, action) pairs in the history.
   struct PlayerAction {
     Player player;
@@ -361,7 +384,6 @@ class State {
   // well, like P1Jack and P2Jack. However prefixing by player number is not
   // a requirement. The only thing that is necessary is that it is unambiguous
   // who is the observer.
-
 
   // Games that do not have imperfect information do not need to implement
   // these methods, but most algorithms intended for imperfect information
@@ -568,14 +590,12 @@ class State {
   // implemented and returns an empty list. This doesn't make any attempt to
   // correct for the opponent's policy in the probabilities, and so this is
   // wrong for any state that's not the first non-chance node.
-  virtual std::unique_ptr<
-      std::pair<std::vector<std::unique_ptr<State>>, std::vector<double>>>
+  virtual std::unique_ptr<HistoryDistribution>
   GetHistoriesConsistentWithInfostate(int player_id) const {
     return {};
   }
 
-  virtual std::unique_ptr<
-      std::pair<std::vector<std::unique_ptr<State>>, std::vector<double>>>
+  virtual std::unique_ptr<HistoryDistribution>
   GetHistoriesConsistentWithInfostate() const {
     return GetHistoriesConsistentWithInfostate(CurrentPlayer());
   }
@@ -612,6 +632,8 @@ std::ostream& operator<<(std::ostream& stream, const State& state);
 class Game : public std::enable_shared_from_this<Game> {
  public:
   virtual ~Game() = default;
+  Game(const Game&) = delete;
+  Game& operator=(const Game&) = delete;
 
   // Maximum number of distinct actions in the game for any one player. This is
   // not the same as max number of legal actions in any state as distinct
@@ -638,6 +660,7 @@ class Game : public std::enable_shared_from_this<Game> {
   // parameter values, including defaulted values. Returns empty parameters
   // otherwise.
   GameParameters GetParameters() const {
+    absl::MutexLock lock(&mutex_defaulted_parameters_);
     GameParameters params = game_parameters_;
     params.insert(defaulted_parameters_.begin(), defaulted_parameters_.end());
     return params;
@@ -655,9 +678,6 @@ class Game : public std::enable_shared_from_this<Game> {
   // are common among games and should use the standard values of {-1,0,1}.
   virtual double MinUtility() const = 0;
   virtual double MaxUtility() const = 0;
-
-  // Return a clone of this game.
-  virtual std::shared_ptr<const Game> Clone() const = 0;
 
   // Static information on the game type. This should match the information
   // provided when registering the game.
@@ -737,11 +757,39 @@ class Game : public std::enable_shared_from_this<Game> {
   // of chance nodes are not included in this length.
   virtual int MaxGameLength() const = 0;
 
+  // A string representation of the game, which can be passed to
+  // DeserializeGame. The difference with Game::ToString is that it also
+  // serializes internal RNG state used with sampled stochastic game
+  // implementations.
+  std::string Serialize() const;
+
   // A string representation of the game, which can be passed to LoadGame.
   std::string ToString() const;
 
+  // Returns true if these games are equal, false otherwise.
+  virtual bool operator==(const Game& other) const {
+    return ToString() == other.ToString();
+  }
+
+  // Get and set game's internal RNG state for de/serialization purposes. These
+  // two methods only need to be overridden by sampled stochastic games that
+  // need to hold an RNG state. Note that stateful game implementations are
+  // discouraged in general.
+  virtual std::string GetRNGState() const {
+    SpielFatalError("GetRNGState unimplemented.");
+  }
+  // SetRNGState is const despite the fact that it changes game's internal
+  // state. Sampled stochastic games need to be explicit about mutability of the
+  // RNG, i.e. have to use the mutable keyword.
+  virtual void SetRNGState(const std::string& rng_state) const {
+    SpielFatalError("SetRNGState unimplemented.");
+  }
+
   // Returns an Observer, used to obtain observations of the game state.
-  // See `spiel_observer.h` for further information.
+  // The observations are created according to requested observation type.
+  // Games can include additional observation fields when requested by
+  // `params`.
+  // See `observer.h` for further information.
   virtual std::shared_ptr<Observer> MakeObserver(
       absl::optional<IIGObservationType> iig_obs_type,
       const GameParameters& params) const;
@@ -754,12 +802,49 @@ class Game : public std::enable_shared_from_this<Game> {
   // - Defaults to the value stored as the default in
   // game_type.parameter_specification if the `default_value` is std::nullopt
   // - Returns `default_value` if provided.
-  //
-  // Only a fixed set of template arguments are supported; see below.
   template <typename T>
-  T ParameterValue(
-      const std::string& key,
-      absl::optional<T> default_value = absl::nullopt) const = delete;
+  T ParameterValue(const std::string& key,
+                   absl::optional<T> default_value = absl::nullopt) const {
+    // Return the value if found.
+    auto iter = game_parameters_.find(key);
+    if (iter != game_parameters_.end()) {
+      return iter->second.value<T>();
+    }
+
+    // Pick the defaulted value.
+    GameParameter default_game_parameter;
+    if (default_value.has_value()) {
+      default_game_parameter = GameParameter(default_value.value());
+    } else {
+      auto default_iter = game_type_.parameter_specification.find(key);
+      if (default_iter == game_type_.parameter_specification.end()) {
+        SpielFatalError(absl::StrCat("The parameter for ", key,
+                                     " is missing in game ", ToString()));
+      }
+      default_game_parameter = default_iter->second;
+    }
+
+    // Return the default value, storing it.
+    absl::MutexLock lock(&mutex_defaulted_parameters_);
+    iter = defaulted_parameters_.find(key);
+    if (iter == defaulted_parameters_.end()) {
+      // We haven't previously defaulted this value, so store the default we
+      // used.
+      defaulted_parameters_[key] = default_game_parameter;
+    } else {
+      // Already defaulted, so check we are being consistent.
+      // Using different default values at different times means the game isn't
+      // well-defined.
+      if (default_game_parameter != iter->second) {
+        SpielFatalError(absl::StrCat("Parameter ", key, " is defaulted to ",
+                                     default_game_parameter.ToReprString(),
+                                     " having previously been defaulted to ",
+                                     iter->second.ToReprString(), " in game ",
+                                     ToString()));
+      }
+    }
+    return default_game_parameter.value<T>();
+  }
 
   // The game type.
   GameType game_type_;
@@ -769,33 +854,10 @@ class Game : public std::enable_shared_from_this<Game> {
 
   // Track the parameters for which a default value has been used. This
   // enables us to report the actual value used for every parameter.
-  mutable GameParameters defaulted_parameters_;
+  mutable GameParameters defaulted_parameters_
+      ABSL_GUARDED_BY(mutex_defaulted_parameters_);
+  mutable absl::Mutex mutex_defaulted_parameters_;
 };
-
-template <>
-GameParameters Game::ParameterValue<GameParameters>(
-    const std::string& key,
-    absl::optional<GameParameters> default_value) const;
-
-template <>
-int Game::ParameterValue<int>(
-    const std::string& key,
-    absl::optional<int> default_value) const;
-
-template <>
-double Game::ParameterValue<double>(
-    const std::string& key,
-    absl::optional<double> default_value) const;
-
-template <>
-std::string Game::ParameterValue<std::string>(
-    const std::string& key,
-    absl::optional<std::string> default_value) const;
-
-template <>
-bool Game::ParameterValue<bool>(
-    const std::string& key,
-    absl::optional<bool> default_value) const;
 
 #define CONCAT_(x, y) x##y
 #define CONCAT(x, y) CONCAT_(x, y)
@@ -836,6 +898,8 @@ std::vector<std::string> RegisteredGames();
 
 // Returns a list of registered game types.
 std::vector<GameType> RegisteredGameTypes();
+
+std::shared_ptr<const Game> DeserializeGame(const std::string& serialized);
 
 // Returns a new game object from the specified string, which is the short
 // name plus optional parameters, e.g. "go(komi=4.5,board_size=19)"
@@ -899,11 +963,6 @@ std::string SerializeGameAndState(const Game& game, const State& state);
 // seed.
 std::pair<std::shared_ptr<const Game>, std::unique_ptr<State>>
 DeserializeGameAndState(const std::string& serialized_state);
-
-// We alias this here as we can't import state_distribution.h or we'd have a
-// circular dependency.
-using HistoryDistribution =
-    std::pair<std::vector<std::unique_ptr<State>>, std::vector<double>>;
 
 // Convert GameTypes from and to strings. Used for serialization of objects
 // that contain them.

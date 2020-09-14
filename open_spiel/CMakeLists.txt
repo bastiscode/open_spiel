@@ -24,12 +24,6 @@ if(NOT WIN32)
   set(BoldWhite   "${Esc}[1;37m")
 endif()
 
-set (Python_TARGET_VERSION "" CACHE STRING "Specify a target Python version. \
-Any Python library found with CMake modules FindPython2/FindPython3 that \
-agrees  with the major version and is at least as high for minor version and \
-patch number is accepted. If the variable is not set, we use the FindPython \
-module which favours Python 3 over Python 2 if both are available.")
-
 set (CMAKE_CXX_STANDARD 17)
 
 # Set default build type.
@@ -94,6 +88,11 @@ macro(openspiel_optional_dependency DEP_NAME DEP_DEFAULT DEP_DESCRIPTION)
   endif()
   set (${DEP_NAME} $ENV{${DEP_NAME}})
   message("${BoldYellow}${DEP_NAME}: ${${DEP_NAME}} ${ColourReset}")
+  # If the dependency is on, pass in compiler flags to enable conditional code,
+  # e.g. #if BUILD_WITH_...
+  if (${DEP_NAME})
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D${DEP_NAME}")
+  endif()
 endmacro()
 
 # List of all optional dependencies:
@@ -115,6 +114,8 @@ openspiel_optional_dependency(BUILD_WITH_XINXIN         OFF
   "Build against xinxin Hearts program.")
 openspiel_optional_dependency(BUILD_WITH_ROSHAMBO       OFF
   "Build against RoShamBo bots.")
+openspiel_optional_dependency(BUILD_WITH_GAMUT          OFF
+  "Build with GAMUT generator integration.")
 
 # Needed to disable Abseil tests.
 set (BUILD_TESTING OFF)
@@ -224,6 +225,10 @@ if (BUILD_WITH_LIBTORCH)
   # Use following to link your_target_executable with torch libraries:
   # target_link_libraries(your_target_executable ${TORCH_LIBRARIES})
 endif()
+if (BUILD_WITH_GAMUT)
+  set(OPEN_SPIEL_OBJECTS ${OPEN_SPIEL_OBJECTS} $<TARGET_OBJECTS:gamut>)
+endif()
+
 
 # We have the parent of this directory in the include path, so that we can
 # include for example "open_spiel/spiel.h" (assuming this directory is named

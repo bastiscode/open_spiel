@@ -173,13 +173,12 @@ class NegotiationGame : public Game {
     return kMaxQuantity * kMaxValue * num_items_;
   }
   double MinUtility() const override { return -MaxUtility(); }
-  std::shared_ptr<const Game> Clone() const override {
-    return std::shared_ptr<const Game>(new NegotiationGame(*this));
-  }
   std::vector<int> ObservationTensorShape() const override;
 
   std::unique_ptr<State> DeserializeState(
       const std::string& str) const override;
+  std::string GetRNGState() const;
+  void SetRNGState(const std::string& rng_state) const;
 
   std::mt19937* RNG() const { return rng_.get(); }
   bool EnableProposals() const { return enable_proposals_; }
@@ -205,7 +204,7 @@ class NegotiationGame : public Game {
   int utterance_dim_;
   int seed_;
   std::vector<Action> legal_utterances_;
-  std::unique_ptr<std::mt19937> rng_;
+  mutable std::unique_ptr<std::mt19937> rng_;
 };
 
 }  // namespace negotiation
